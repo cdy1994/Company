@@ -1,0 +1,174 @@
+  private void initFragment() {
+        mTab.add(IndexFragment.getFragment());
+        //    mTab.add(ShopFragment.getFragment(1));
+        mTab.add(MemberFragment.getFragment());
+        mTab.add(MessageFragment.getFragment());
+        //    mTab.add(MainMsgFragment.getFragment());
+     //   mTab.add(NewMainMsgFragment.getFragment());
+        mTab.add(MineNewFragment.getFragment());
+        // mTab.add(CircleOfFriendsFragment.getFragment());
+        mTab.add(ActivityFragment.getFragment());
+        showAndHide(MainActivity.this, R.id.fl_home, mTab.get(0).getClass());
+
+    }
+
+    public void showAndHide(BaseActivity context, int contentId, Class<? extends Fragment> clazz) {
+        mFragmentManager = context.getSupportFragmentManager();
+        //判断当前的fragment和需要替换的fragment是否是统一一个
+        if (mCurrentFragment != null && mCurrentFragment.getClass().getSimpleName().equals(clazz.getSimpleName())) {
+            return;
+        }
+        //判断fragment有没有添加过
+        FragmentTransaction transaction = mFragmentManager.beginTransaction();
+        Fragment fragment;
+        try {
+            Fragment fragmentByTag = mFragmentManager.findFragmentByTag(clazz.getSimpleName());
+            if (fragmentByTag != null) {
+                //显示需要的fragment
+                transaction.show(fragmentByTag);
+                //隐藏当前的fragment
+                if (mCurrentFragment != null) {
+                    transaction.hide(mCurrentFragment);
+                }
+                //让记录当前的fragment赋值为显示的fragment
+                mCurrentFragment = fragmentByTag;
+            } else {
+                //通过无参的 公开的构造函数来创建Fragment实例
+                fragment = clazz.newInstance();
+                //当前的Fragment没有添加过 把Fragment添加到manager里面
+                transaction.add(contentId, fragment, clazz.getSimpleName());
+                //隐藏当前的Fragment
+                if (mCurrentFragment != null) {
+                    transaction.hide(mCurrentFragment);
+                }
+                //记录当前的Fragment是那个
+                mCurrentFragment = fragment;
+            }
+            transaction.commit();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @SuppressLint("NonConstantResourceId")
+    @OnClick({R.id.rb_one, R.id.rb_two, R.id.rb_three, R.id.rb_four, R.id.rb_five})
+    public void onClick(View view) {
+        switch (view.getId()) {
+            case R.id.rb_one:
+                changeTabRadioButton();
+                if (indexLive != null) {
+                    indexLive.actionMoveView(true);
+                }
+                if (indexFloatAdView != null) {
+                    indexFloatAdView.actionMoveView(true);
+                }
+                current = System.currentTimeMillis();
+                showAndHide(MainActivity.this, R.id.fl_home, mTab.get(0).getClass());
+                if (!HttpServerUtil.getInstance().isExitStatus()) { //已登录
+                    getOperationalStrategyData(0);
+                }
+                break;
+            case R.id.rb_two:
+                changeTabRadioButton();
+                if (indexLive != null) {
+                    indexLive.actionMoveView(false);
+                }
+                if (indexFloatAdView != null) {
+                    indexFloatAdView.actionMoveView(false);
+                }
+                if (HttpServerUtil.getInstance().isExitStatus()) {
+                    if (mCurrentFragment instanceof IndexFragment) {
+                        rb_one.setChecked(true);
+                    }
+                    if (mCurrentFragment instanceof MemberFragment) {
+                        rb_two.setChecked(true);
+                    }
+                    if (mCurrentFragment instanceof MineNewFragment) {
+                        rb_three.setChecked(true);
+                    }
+                    if (mCurrentFragment instanceof ActivityFragment) {
+                        rb_five.setChecked(true);
+                    }
+                    intentActivity(RegisterActivity.class);
+                    return;
+                }
+                if (mCurrentFragment instanceof IndexFragment) {
+                    actionAppLog(IndexFragment.class.toString());
+                }
+                current = System.currentTimeMillis();
+                showAndHide(MainActivity.this, R.id.fl_home, mTab.get(2).getClass());
+                if (!HttpServerUtil.getInstance().isExitStatus()) { //已登录
+                    getOperationalStrategyData(3);
+                }
+                break;
+            case R.id.rb_three:
+                changeTabRadioButton();
+                if (indexLive != null) {
+                    indexLive.actionMoveView(false);
+                }
+                if (indexFloatAdView != null) {
+                    indexFloatAdView.actionMoveView(false);
+                }
+                if (mCurrentFragment instanceof IndexFragment) {
+                    actionAppLog(IndexFragment.class.toString());
+                }
+                current = System.currentTimeMillis();
+                showAndHide(MainActivity.this, R.id.fl_home, mTab.get(3).getClass());
+                if (HttpServerUtil.getInstance().isExitStatus()) {
+                    intentActivity(RegisterActivity.class);
+                }else {
+                    getOperationalStrategyData(4);
+
+                }
+                break;
+            case R.id.rb_four:
+                changeTabRadioButton();
+                if (indexLive != null) {
+                    indexLive.actionMoveView(false);
+                }
+                if (indexFloatAdView != null) {
+                    indexFloatAdView.actionMoveView(false);
+                }
+                if (HttpServerUtil.getInstance().isExitStatus()) {
+                    if (mCurrentFragment instanceof IndexFragment) {
+                        rb_one.setChecked(true);
+                    }
+                    if (mCurrentFragment instanceof MessageFragment) {
+                        rb_two.setChecked(true);
+                    }
+                    if (mCurrentFragment instanceof NewMainMsgFragment) {
+                        rb_two.setChecked(true);
+                    }
+                    if (mCurrentFragment instanceof MineNewFragment) {
+                        rb_three.setChecked(true);
+                    }
+                    if (mCurrentFragment instanceof ActivityFragment) {
+                        rb_five.setChecked(true);
+                    }
+                    intentActivity(RegisterActivity.class);
+                    return;
+                }
+                current = System.currentTimeMillis();
+                showAndHide(MainActivity.this, R.id.fl_home, mTab.get(1).getClass());
+                if (!HttpServerUtil.getInstance().isExitStatus()) { //已登录
+                    getOperationalStrategyData(2);
+                }
+                break;
+            case R.id.rb_five:
+                changeTabRadioButton();
+                if (indexLive != null) {
+                    indexLive.actionMoveView(false);
+                }
+                if (indexFloatAdView != null) {
+                    indexFloatAdView.actionMoveView(false);
+                }
+                current = System.currentTimeMillis();
+                showAndHide(MainActivity.this, R.id.fl_home, mTab.get(4).getClass());
+                if (HttpServerUtil.getInstance().isExitStatus()) {
+                    intentActivity(RegisterActivity.class);
+                }else {
+                    getOperationalStrategyData(1);
+                }
+                break;
+        }
+    }
