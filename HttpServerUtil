@@ -1,3 +1,477 @@
     public interface NetWorkCallbackInterface {
         void showCallback(String result);
     }
+
+  //get请求
+    public void sendDataGetService(final String url, final NetWorkCallbackInterface dataCallBack, final NetWorkCallbackInterface failCallBack, final NetWorkCallbackInterface codeCallBack) {
+        long timestamp = System.currentTimeMillis();
+        JSONObject jsonObject = null;
+        try {
+            jsonObject = new JSONObject();
+            jsonObject.put("appKey", HttpServerUtil.appKey);
+            jsonObject.put("salt", HttpServerUtil.salt);
+            jsonObject.put("version", getVersion());
+            jsonObject.put("timestamp", "" + timestamp);
+            jsonObject.put("extra", getExtraInfo());
+            jsonObject.put("bizContent", "");
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        String sign = gateWaySign(jsonObject);
+
+        OkHttpClient okHttpClient = new OkHttpClient();
+        Request request = new Request
+                .Builder()
+                .get()
+                .header("appKey", HttpServerUtil.appKey)
+                .header("sign", sign)
+                .header("jpush", MyApplication.getInstance().registrationID)
+                .header("version", getVersion())
+                .header("timestamp", "" + timestamp)
+                .header("extra", getExtraInfo())
+                .header("Authorization", getParamWithKey(TOKEN))
+                .url(url)
+                .build();
+
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                if (failCallBack != null) {
+                    failCallBack.showCallback("与服务器失去联系");
+                }
+                DebugModel.getInstance().systemPrint(url + "---" + "与服务器失去联系");
+
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull final Response response) throws IOException {
+                final String result = Objects.requireNonNull(response.body()).string();
+                try {
+                    JSONObject object = new JSONObject(result);
+                    if (isOperationForUrl(url)) {
+                        if (object.getInt("code") == 401) {
+                            if (codeCallBack != null) {
+                                codeCallBack.showCallback(object.toString());
+                            }
+                        } else {
+                            if (dataCallBack != null) {
+                                dataCallBack.showCallback(result);
+                            }
+                        }
+                        return;
+                    }
+
+                    if (object.getInt("code") == 200) {
+                        String Content = object.get("data").toString();
+                        int flag = object.optInt("flag",0);
+                        if ((flag & (1 << 4) ) > 0) { //需要密钥解密
+                            // 如果 flag 的第5位是1，则执行这里的代码
+                            Content = AESUtils.decryptWithKeyIv(Content, secretKey, iv);
+                        }
+                        if (dataCallBack != null) {
+                            dataCallBack.showCallback(Content);
+                        }
+                    } else {
+                        if (codeCallBack != null) {
+                            codeCallBack.showCallback(object.toString());
+                        }
+                    }
+                } catch (Exception e) {
+                    if (failCallBack != null) {
+                        failCallBack.showCallback("解析数据错误");
+                    }
+                    DebugModel.getInstance().systemPrint(url + "---" + "解析数据错误");
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    //post请求
+    public void sendJsonPostServer(String url, String json, final NetWorkCallbackInterface dataCallBack, final NetWorkCallbackInterface failCallBack, final NetWorkCallbackInterface codeCallBack) {
+        try {
+            String bizContent = json;
+            if (BaseUtils.isEmpty(json)) {
+                bizContent = "";
+            }
+            long timestamp = System.currentTimeMillis();
+            JSONObject jsonObject = initJsonData(bizContent, timestamp);
+            String sign = gateWaySign(jsonObject);
+
+            OkHttpClient okHttpClient = new OkHttpClient.Builder()
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .writeTimeout(30, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build();
+
+            final MediaType JSON = MediaType.parse("application/json; encoding=utf8; charset=utf-8");
+            RequestBody body = RequestBody.create(JSON, bizContent);
+            Request request = new Request
+                    .Builder()
+                    .post(body)
+                    .header("appKey", HttpServerUtil.appKey)
+                    .header("jpush", MyApplication.getInstance().registrationID)
+                    .header("sign", sign)
+                    .header("version", getVersion())
+                    .header("timestamp", "" + timestamp)
+                    .header("extra", getExtraInfo())
+                    .header("Authorization", getParamWithKey(TOKEN))
+                    .url(url)
+                    .build();
+
+            okHttpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onResponse(@NonNull okhttp3.Call call, @NonNull Response response) throws IOException {
+                    final String result = Objects.requireNonNull(response.body()).string();
+                    try {
+                        JSONObject object = new JSONObject(result);
+                        //如果需要特殊处理，把code放外面处理的链接用此
+                        if (isOperationForUrl(url)) {
+                            if (object.optInt("code") == 401) {
+                                if (codeCallBack != null) {
+                                    codeCallBack.showCallback(object.toString());
+                                }
+                            } else {
+                                if (dataCallBack != null) {
+                                    dataCallBack.showCallback(result);
+                                }
+                            }
+                            return;
+                        }
+                         if (object.optString("code").equals("200")) {
+                            String Content = object.get("data").toString();
+                            int flag = object.optInt("flag",0);
+                            if ((flag & (1 << 4) ) > 0) { //需要密钥解密
+                                // 如果 flag 的第5位是1，则执行这里的代码
+                                Content = AESUtils.decryptWithKeyIv(Content, secretKey, iv);
+                            }
+                            if (dataCallBack != null) {
+                                dataCallBack.showCallback(Content);
+                            }
+                        } else {
+                            if (codeCallBack != null) {
+                                codeCallBack.showCallback(object.toString());
+                            }
+                        }
+                    } catch (Exception e) {
+                        if (failCallBack != null) {
+                            failCallBack.showCallback("解析数据错误");
+                        }
+                        DebugModel.getInstance().systemPrint(url + json + "---" + "解析数据错误");
+                        e.printStackTrace();
+                    }
+                }
+
+                @Override
+                public void onFailure(@NonNull okhttp3.Call call, @NonNull IOException e) {
+                    if (failCallBack != null) {
+                        failCallBack.showCallback("与服务器失去联系");
+                    }
+                    DebugModel.getInstance().systemPrint(url + json + "---" + "与服务器失去联系");
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    //put请求
+    public void sendJsonPutServer(String url, String json, final NetWorkCallbackInterface dataCallBack, final NetWorkCallbackInterface failCallBack, final NetWorkCallbackInterface codeCallBack) {
+        try {
+            String bizContent = json;
+            if (json == null) {
+                bizContent = "";
+            }
+            long timestamp = System.currentTimeMillis();
+
+            JSONObject jsonObject = initJsonData(bizContent, timestamp);
+            String sign = gateWaySign(jsonObject);
+
+            OkHttpClient okHttpClient = new OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .writeTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    .build();
+
+            final MediaType JSON = MediaType.parse("application/json; encoding=utf8; charset=utf-8");
+            RequestBody body = RequestBody.create(JSON, bizContent);
+            Request request = new Request
+                    .Builder()
+                    .put(body)
+                    .header("appKey", HttpServerUtil.appKey)
+                    .header("sign", sign)
+                    .header("jpush", MyApplication.getInstance().registrationID)
+                    .header("version", getVersion())
+                    .header("timestamp", "" + timestamp)
+                    .header("extra", getExtraInfo())
+                    .header("Authorization", getParamWithKey(TOKEN))
+                    .url(url)
+                    .build();
+
+            final String printString = url + "----" + jsonObject.toString();
+
+            okHttpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onResponse(@NonNull okhttp3.Call call, @NonNull Response response) throws IOException {
+                    final String result = Objects.requireNonNull(response.body()).string();
+                    try {
+                        JSONObject object = new JSONObject(result);
+                        if (isOperationForUrl(url)) {
+                            if (object.getInt("code") == 401) {
+                                if (codeCallBack != null) {
+                                    codeCallBack.showCallback(object.toString());
+                                }
+                            } else {
+                                if (dataCallBack != null) {
+                                    dataCallBack.showCallback(result);
+                                }
+                            }
+                            return;
+                        }
+
+                        if (object.optString("code").equals("200")) {
+                            String Content = object.get("data").toString();
+                            int flag = object.optInt("flag",0);
+                            if ((flag & (1 << 4) ) > 0) { //需要密钥解密
+                                // 如果 flag 的第5位是1，则执行这里的代码
+                                Content = AESUtils.decryptWithKeyIv(Content, secretKey, iv);
+                            }
+                            if (dataCallBack != null) {
+                                dataCallBack.showCallback(Content);
+                            }
+                        } else {
+                            if (codeCallBack != null) {
+                                codeCallBack.showCallback(object.toString());
+                            }
+                        }
+                    } catch (Exception e) {
+                        if (failCallBack != null) {
+                            failCallBack.showCallback("解析数据错误");
+                        }
+                        e.printStackTrace();
+                    }
+                }
+
+                @Override
+                public void onFailure(@NonNull okhttp3.Call call, @NonNull IOException e) {
+                    if (failCallBack != null) {
+                        failCallBack.showCallback("与服务器失去联系");
+                    }
+                    DebugModel.getInstance().systemPrint(printString + "---" + "与服务器失去联系");
+
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    //delete请求
+    public void sendDataDelServer(final String url, final NetWorkCallbackInterface dataCallBack, final NetWorkCallbackInterface failCallBack, final NetWorkCallbackInterface codeCallBack) {
+        long timestamp = System.currentTimeMillis();
+        JSONObject jsonObject = null;
+        try {
+            jsonObject = new JSONObject();
+            jsonObject.put("appKey", HttpServerUtil.appKey);
+            jsonObject.put("salt", HttpServerUtil.salt);
+            jsonObject.put("version", getVersion());
+            jsonObject.put("timestamp", "" + timestamp);
+            jsonObject.put("extra", getExtraInfo());
+            jsonObject.put("bizContent", "");
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        String sign = gateWaySign(jsonObject);
+        FormBody.Builder builder = new FormBody.Builder();
+        FormBody body = builder.build();
+        OkHttpClient okHttpClient = new OkHttpClient();
+        Request request = new Request
+                .Builder()
+                .header("appKey", HttpServerUtil.appKey)
+                .header("sign", sign)
+                .header("jpush", MyApplication.getInstance().registrationID)
+                .header("version", getVersion())
+                .header("timestamp", "" + timestamp)
+                .header("extra", getExtraInfo())
+                .header("Authorization", getParamWithKey(TOKEN))
+                .delete(body)
+                .url(url)
+                .build();
+
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(@NonNull Call call, @NonNull IOException e) {
+                if (failCallBack != null) {
+                    failCallBack.showCallback("与服务器失去联系");
+                }
+                DebugModel.getInstance().systemPrint(url + "---" + "与服务器失去联系");
+            }
+
+            @Override
+            public void onResponse(@NonNull Call call, @NonNull final Response response) throws IOException {
+                final String result = Objects.requireNonNull(response.body()).string();
+                try {
+                    JSONObject object = new JSONObject(result);
+                    if (isOperationForUrl(url)) {
+                        if (object.getInt("code") == 401) {
+                            if (codeCallBack != null) {
+                                codeCallBack.showCallback(object.toString());
+                            }
+                        } else {
+                            if (dataCallBack != null) {
+                                dataCallBack.showCallback(result);
+                            }
+                        }
+                        return;
+                    }
+
+                    if (object.getInt("code") == 200) {
+                        String Content = object.get("data").toString();
+                        int flag = object.optInt("flag",0);
+                        if ((flag & (1 << 4) ) > 0) { //需要密钥解密
+                            // 如果 flag 的第5位是1，则执行这里的代码
+                            Content = AESUtils.decryptWithKeyIv(Content, secretKey, iv);
+                        }
+                        if (dataCallBack != null) {
+                            dataCallBack.showCallback(Content);
+                        }
+                    } else {
+                        if (codeCallBack != null) {
+                            codeCallBack.showCallback(object.toString());
+                        }
+                    }
+                } catch (Exception e) {
+                    DebugModel.getInstance().systemPrint(url + "---" + "解析数据错误");
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+    //下载专用
+    public void sendPostDownServer(String url, String json, String fileName, final NetWorkCallbackInterface netWorkCallbackInter,final NetWorkCallbackInterface failCallBack) {
+        try {
+            String bizContent = json;
+            if (json == null) {
+                bizContent = "";
+            }
+            OkHttpClient okHttpClient = new OkHttpClient();
+            Request request = new Request
+                    .Builder()
+                    .url(url)
+                    .build();
+            okHttpClient.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onResponse(@NonNull okhttp3.Call call, @NonNull Response response) throws IOException {
+                    try {
+                        String tempTimeEnd = TimeFormatUtils.getCurrentDate(2);
+                        DebugModel.getInstance().addTextInMap( request + "--download");
+                        // 获取响应数据
+                        ResponseBody body = response.body();
+                        // 将响应数据保存为PDF文件
+                        InputStream inputStream = body.byteStream();
+                        String mPath = BaseUtil.getXlsFileName(fileName);
+                        File pdfFile = new File(mPath);
+                        FileOutputStream outputStream = new FileOutputStream(pdfFile);
+                        byte[] buffer = new byte[4096];
+                        int bytesRead;
+                        while ((bytesRead = inputStream.read(buffer)) != -1) {
+                            outputStream.write(buffer, 0, bytesRead);
+                        }
+                        outputStream.flush();
+                        outputStream.close();
+                        inputStream.close();
+
+                        if (netWorkCallbackInter != null) {
+                            netWorkCallbackInter.showCallback(pdfFile.getPath());
+                        }
+                    } catch (Exception e) {
+                        if (netWorkCallbackInter != null) {
+                            netWorkCallbackInter.showCallback("");
+                        }
+                    }
+                }
+
+                @Override
+                public void onFailure(@NonNull okhttp3.Call call, @NonNull IOException e) {
+                    failCallBack.showCallback("与服务器失去联系");
+                    DebugModel.getInstance().systemPrint(url + "/" + json + "---" + "与服务器失去联系");
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    public void uploadFile(final NetWorkCallbackInterface dataCallBack, final NetWorkCallbackInterface failCallBack, final NetWorkCallbackInterface codeCallBack, String uploadUrl, String key, String token, File file) {
+        MultipartBody builder = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("key", key)
+                .addFormDataPart("token", token)
+                .addFormDataPart("file", file.getName(), RequestBody.create(MediaType.parse("multipart/form-data"), file))
+                .build();
+
+        final String printString = uploadUrl + "?file=" + file.getName() + "&key=" + key + "&token=" + token;
+        OkHttpClient okHttpClient = new OkHttpClient.Builder()
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .build();
+        Request request = new Request.Builder()
+                .url(uploadUrl)//地址
+                .post(builder)//添加请求体
+                .header("Authorization", getParamWithKey(TOKEN))
+                .build();
+
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onResponse(@NonNull okhttp3.Call call, @NonNull Response response) throws IOException {
+                //此方法运行在子线程中，不能在此方法中进行UI操作。
+                final String result = response.body().string();
+                dataCallBack.showCallback(uploadUrl + "/" + key);
+            }
+
+            @Override
+            public void onFailure(@NonNull okhttp3.Call call, @NonNull IOException e) {
+                failCallBack.showCallback("与服务器失去联系");
+                DebugModel.getInstance().systemPrint(uploadUrl + "/" + key + "---" + "与服务器失去联系");
+            }
+        });
+    }
+
+    public void uploadImageFile(final NetWorkCallbackInterface dataCallBack, final NetWorkCallbackInterface failCallBack, final NetWorkCallbackInterface codeCallBack, String uploadUrl, String key, String token, File file) {
+        MultipartBody builder = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("key", key)
+                .addFormDataPart("token", token)
+                .addFormDataPart("file", file.getName(), RequestBody.create(MediaType.parse("image/*"), file))
+                .build();
+
+        final String printString = uploadUrl + "?file=" + file.getName() + "&key=" + key + "&token=" + token;
+        OkHttpClient okHttpClient = new OkHttpClient.Builder()
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .build();
+        Request request = new Request.Builder()
+                .url(uploadUrl)//地址
+                .post(builder)//添加请求体
+                .header("Authorization", getParamWithKey(TOKEN))
+                .build();
+
+        okHttpClient.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onResponse(@NonNull okhttp3.Call call, @NonNull Response response) throws IOException {
+                //此方法运行在子线程中，不能在此方法中进行UI操作。
+                final String result = response.body().string();
+                dataCallBack.showCallback(uploadUrl + "/" + key);
+            }
+
+            @Override
+            public void onFailure(@NonNull okhttp3.Call call, @NonNull IOException e) {
+                failCallBack.showCallback("与服务器失去联系");
+                DebugModel.getInstance().systemPrint(uploadUrl + "/" + key + "---" + "与服务器失去联系");
+            }
+        });
+    }
+
